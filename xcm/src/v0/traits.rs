@@ -21,7 +21,7 @@ use parity_scale_codec::{Decode, Encode};
 
 use super::{MultiLocation, Xcm};
 
-#[derive(Clone, Encode, Decode, Eq, PartialEq, Debug)]
+#[derive(Clone, Encode, Decode, Eq, PartialEq, Debug, scale_info::TypeInfo)]
 pub enum Error {
 	Undefined,
 	/// An arithmetic overflow happened.
@@ -56,12 +56,12 @@ pub enum Error {
 	/// An asset wildcard was passed where it was not expected (e.g. as the asset to withdraw in a
 	/// `WithdrawAsset` XCM).
 	Wildcard,
-	/// The case where an XCM message has specified a optional weight limit and the weight required for
-	/// processing is too great.
+	/// The case where an XCM message has specified a weight limit on an interior call and this
+	/// limit is too low.
 	///
 	/// Used by:
 	/// - `Transact`
-	TooMuchWeightRequired,
+	MaxWeightInvalid,
 	/// The fees specified by the XCM message were not found in the holding account.
 	///
 	/// Used by:
@@ -103,7 +103,7 @@ pub type Result = result::Result<(), Error>;
 pub type Weight = u64;
 
 /// Outcome of an XCM execution.
-#[derive(Clone, Encode, Decode, Eq, PartialEq, Debug)]
+#[derive(Clone, Encode, Decode, Eq, PartialEq, Debug, scale_info::TypeInfo)]
 pub enum Outcome {
 	/// Execution completed successfully; given weight was used.
 	Complete(Weight),

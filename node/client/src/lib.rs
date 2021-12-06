@@ -23,6 +23,7 @@ use polkadot_primitives::v1::{
 	AccountId, Balance, Block, BlockNumber, Hash, Header, Nonce, ParachainHost,
 };
 use sc_client_api::{AuxStore, Backend as BackendT, BlockchainEvents, KeyIterator, UsageProvider};
+use sc_executor::NativeElseWasmExecutor;
 use sp_api::{CallApiAt, NumberFor, ProvideRuntimeApi};
 use sp_blockchain::HeaderBackend;
 use sp_consensus::BlockStatus;
@@ -31,17 +32,28 @@ use sp_runtime::{
 	traits::{BlakeTwo256, Block as BlockT},
 	Justifications,
 };
-use sp_storage::{ChildInfo, PrefixedStorageKey, StorageData, StorageKey};
+use sp_storage::{ChildInfo, StorageData, StorageKey};
 use std::sync::Arc;
 
 pub type FullBackend = sc_service::TFullBackend<Block>;
 
-pub type FullClient<RuntimeApi, Executor> = sc_service::TFullClient<Block, RuntimeApi, Executor>;
+pub type FullClient<RuntimeApi, ExecutorDispatch> =
+	sc_service::TFullClient<Block, RuntimeApi, NativeElseWasmExecutor<ExecutorDispatch>>;
+
+#[cfg(not(any(
+	feature = "rococo",
+	feature = "kusama",
+	feature = "westend",
+	feature = "polkadot"
+)))]
+compile_error!("at least one runtime feature must be enabled");
 
 /// The native executor instance for Polkadot.
-pub struct PolkadotExecutor;
+#[cfg(feature = "polkadot")]
+pub struct PolkadotExecutorDispatch;
 
-impl sc_executor::NativeExecutionDispatch for PolkadotExecutor {
+#[cfg(feature = "polkadot")]
+impl sc_executor::NativeExecutionDispatch for PolkadotExecutorDispatch {
 	type ExtendHostFunctions = frame_benchmarking::benchmarking::HostFunctions;
 
 	fn dispatch(method: &str, data: &[u8]) -> Option<Vec<u8>> {
@@ -55,10 +67,10 @@ impl sc_executor::NativeExecutionDispatch for PolkadotExecutor {
 
 #[cfg(feature = "kusama")]
 /// The native executor instance for Kusama.
-pub struct KusamaExecutor;
+pub struct KusamaExecutorDispatch;
 
 #[cfg(feature = "kusama")]
-impl sc_executor::NativeExecutionDispatch for KusamaExecutor {
+impl sc_executor::NativeExecutionDispatch for KusamaExecutorDispatch {
 	type ExtendHostFunctions = frame_benchmarking::benchmarking::HostFunctions;
 
 	fn dispatch(method: &str, data: &[u8]) -> Option<Vec<u8>> {
@@ -72,10 +84,10 @@ impl sc_executor::NativeExecutionDispatch for KusamaExecutor {
 
 #[cfg(feature = "westend")]
 /// The native executor instance for Westend.
-pub struct WestendExecutor;
+pub struct WestendExecutorDispatch;
 
 #[cfg(feature = "westend")]
-impl sc_executor::NativeExecutionDispatch for WestendExecutor {
+impl sc_executor::NativeExecutionDispatch for WestendExecutorDispatch {
 	type ExtendHostFunctions = frame_benchmarking::benchmarking::HostFunctions;
 
 	fn dispatch(method: &str, data: &[u8]) -> Option<Vec<u8>> {
@@ -89,10 +101,10 @@ impl sc_executor::NativeExecutionDispatch for WestendExecutor {
 
 #[cfg(feature = "rococo")]
 /// The native executor instance for Rococo.
-pub struct RococoExecutor;
+pub struct RococoExecutorDispatch;
 
 #[cfg(feature = "rococo")]
-impl sc_executor::NativeExecutionDispatch for RococoExecutor {
+impl sc_executor::NativeExecutionDispatch for RococoExecutorDispatch {
 	type ExtendHostFunctions = frame_benchmarking::benchmarking::HostFunctions;
 
 	fn dispatch(method: &str, data: &[u8]) -> Option<Vec<u8>> {
@@ -231,6 +243,7 @@ macro_rules! with_client {
 		}
 	} => {
 		match $self {
+			#[cfg(feature = "polkadot")]
 			Self::Polkadot($client) => { $( $code )* },
 			#[cfg(feature = "westend")]
 			Self::Westend($client) => { $( $code )* },
@@ -247,13 +260,14 @@ macro_rules! with_client {
 /// See [`ExecuteWithClient`] for more information.
 #[derive(Clone)]
 pub enum Client {
-	Polkadot(Arc<FullClient<polkadot_runtime::RuntimeApi, PolkadotExecutor>>),
+	#[cfg(feature = "polkadot")]
+	Polkadot(Arc<FullClient<polkadot_runtime::RuntimeApi, PolkadotExecutorDispatch>>),
 	#[cfg(feature = "westend")]
-	Westend(Arc<FullClient<westend_runtime::RuntimeApi, WestendExecutor>>),
+	Westend(Arc<FullClient<westend_runtime::RuntimeApi, WestendExecutorDispatch>>),
 	#[cfg(feature = "kusama")]
-	Kusama(Arc<FullClient<kusama_runtime::RuntimeApi, KusamaExecutor>>),
+	Kusama(Arc<FullClient<kusama_runtime::RuntimeApi, KusamaExecutorDispatch>>),
 	#[cfg(feature = "rococo")]
-	Rococo(Arc<FullClient<rococo_runtime::RuntimeApi, RococoExecutor>>),
+	Rococo(Arc<FullClient<rococo_runtime::RuntimeApi, RococoExecutorDispatch>>),
 }
 
 impl ClientHandle for Client {
@@ -497,36 +511,6 @@ impl sc_client_api::StorageProvider<Block, crate::FullBackend> for Client {
 			client,
 			{
 				client.child_storage_hash(id, child_info, key)
-			}
-		}
-	}
-
-	fn max_key_changes_range(
-		&self,
-		first: NumberFor<Block>,
-		last: BlockId<Block>,
-	) -> sp_blockchain::Result<Option<(NumberFor<Block>, BlockId<Block>)>> {
-		with_client! {
-			self,
-			client,
-			{
-				client.max_key_changes_range(first, last)
-			}
-		}
-	}
-
-	fn key_changes(
-		&self,
-		first: NumberFor<Block>,
-		last: BlockId<Block>,
-		storage_key: Option<&PrefixedStorageKey>,
-		key: &StorageKey,
-	) -> sp_blockchain::Result<Vec<(NumberFor<Block>, u32)>> {
-		with_client! {
-			self,
-			client,
-			{
-				client.key_changes(first, last, storage_key, key)
 			}
 		}
 	}
